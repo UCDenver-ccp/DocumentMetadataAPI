@@ -1,19 +1,27 @@
-import requests
+import http.client
 import random
 import json
 import time
+import urllib.parse
 
 
 def get_ids():
-    response = requests.get("https://e2ewfsmmxz.us-east-1.awsapprunner.com/ids")
-    response_object = json.loads(response.text)
+    connection = http.client.HTTPSConnection("e2ewfsmmxz.us-east-1.awsapprunner.com")
+    connection.request('GET', '/ids')
+    response = connection.getresponse()
+    response_object = json.loads(response.read())
     return response_object
 
 
 def get_metadata(publication_ids):
-    response = requests.get("https://e2ewfsmmxz.us-east-1.awsapprunner.com/publications",
-                            params={"pubids": ','.join(publication_ids), "request_id": 154})
-    data = json.loads(response.text)
+    safe_ids = [urllib.parse.quote_plus(x) for x in publication_ids]
+    connection = http.client.HTTPSConnection("e2ewfsmmxz.us-east-1.awsapprunner.com")
+    connection.request('GET', f'/publications?pubids={",".join(safe_ids)}&request_id=412')
+    response = connection.getresponse()
+    if response.status != 200:
+        return None
+    r2 = response.read()
+    data = json.loads(r2)
     return data['_meta'] if '_meta' in data else None
 
 
@@ -21,7 +29,9 @@ def multi_request(id_list, start_index, requests_count, step):
     random.shuffle(id_list)
     metrics = []
     for end_index in range(start_index + step, requests_count * step + start_index + step, step):
-        metrics.append(get_metadata(id_list[start_index:end_index]))
+        single_metrics = get_metadata(id_list[start_index:end_index])
+        if single_metrics:
+            metrics.append(single_metrics)
         start_index = end_index
     return metrics
 
