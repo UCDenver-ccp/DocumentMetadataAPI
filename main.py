@@ -3,15 +3,19 @@ import time
 from functools import lru_cache
 
 from flask import Flask, request
+from flask_cors import CORS
 from pymongo import MongoClient
 
 app = Flask(__name__)
+CORS(app)
 
 if os.environ and 'connection_string' in os.environ:
     client = MongoClient(os.environ['connection_string'])
+    db = client['test']
 else:
+    print('local db')
     client = MongoClient()
-db = client['test']
+    db = client['local']
 collection = db['documentMetadata']
 
 
@@ -22,7 +26,7 @@ def health_check():
 
 @app.route('/ids')
 def func():
-    ids = get_pmc_ids(6000)
+    ids = get_pm_ids(6000)
     ids.extend(get_pmc_ids(5000))
     ids.extend(get_other_ids(5000))
     return {'ids': ids}
