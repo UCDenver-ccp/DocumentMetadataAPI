@@ -1,6 +1,7 @@
 # DocumentMetadataAPI
 
 Simple API for retrieving document metadata by PMID, PMC id, and/or DOI.
+The dev instance is hosted at https://3md2qwxrrk.us-east-1.awsapprunner.com/
 
 Meets the proposed specifications:
 ```
