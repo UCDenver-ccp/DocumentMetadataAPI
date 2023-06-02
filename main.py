@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from functools import lru_cache
 
@@ -21,7 +22,10 @@ collection = db['documentMetadata']
 
 @app.route('/')
 def health_check():
-    return "OK", 200
+    ids = get_pm_ids(10)
+    ids.extend(get_pmc_ids(10))
+    ids.extend(get_other_ids(10))
+    return {'ids': ids}
 
 
 @app.route('/ids')
@@ -52,7 +56,12 @@ def publication_lookup():
     t = time.perf_counter()
     args = request.args
     pub_ids = args['pubids'].split(',')
-    documents = [x for x in collection.find({'document_id': {'$in': pub_ids}})]
+    corrected_pub_ids = []
+    for pub_id in pub_ids:
+        corrected_id = re.sub('PMC:', 'PMC', pub_id, flags=re.IGNORECASE)
+        corrected_id = re.sub('DOI:', '', corrected_id, flags=re.IGNORECASE).strip()
+        corrected_pub_ids.append(corrected_id)
+    documents = [x for x in collection.find({'document_id': {'$in': corrected_pub_ids}})]
     results = {}
     for document in documents:
         results[document["document_id"]] = {
