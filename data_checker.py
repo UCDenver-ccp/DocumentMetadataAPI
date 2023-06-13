@@ -15,15 +15,18 @@ def load_file(filepath):
     return documents
 
 
-
-def check_file(remote_bucket, remote_filename):
+def get_document_dict(remote_bucket, remote_filename):
     with open('/tmp/source.gz', 'wb') as dest:
         gcp_client.download_fileobj(remote_bucket, remote_filename, dest)
     with gzip.open('/tmp/source.gz', 'rb') as gzfile:
         byte_contents = gzfile.read()
         with open('/tmp/source.tsv', 'wb') as tsvfile:
             count = tsvfile.write(byte_contents)
-    document_dict = load_file('/tmp/source.tsv')
+    return load_file('/tmp/source.tsv')
+
+
+
+def check_existence(document_dict):
     id_list = ['PMID:' + document_id for document_id in document_dict.keys()]
     print(id_list[:10])
     print(len(id_list))
@@ -38,15 +41,42 @@ def check_file(remote_bucket, remote_filename):
     unfound_ids = set(id_list) - set(found_ids)
     print(len(unfound_ids))
     missing_dict = {}
-    for document_id in unfound_ids:
+    for unfound_id in unfound_ids:
+        document_id = unfound_id.replace('PMID:', '')
         if document_id not in document_dict:
-            print('not sure what to do with this ID:' + document_id)
+            print('not sure what to do with this ID: ' + document_id)
             continue
         filename = document_dict[document_id]
         if filename not in missing_dict:
             missing_dict[filename] = []
         missing_dict[filename].append(document_id)
     return missing_dict
+
+
+def check_nonexistence(document_dict):
+    id_list = ['PMID:' + document_id for document_id in document_dict.keys()]
+    print(id_list[:10])
+    print(len(id_list))
+    found_ids = []
+    subs = ceil(len(id_list) / 10000)
+    for i in range(subs):
+        start = i * 10000
+        end = min(start + 10000, len(id_list))
+        sublist = [doc['document_id'] for doc in collection.find({'document_id': {'$in': id_list[start:end]}})]
+        found_ids.extend(sublist)
+        print(f'{len(sublist)} | {len(found_ids)}')
+    print(len(found_ids))
+    found_dict = {}
+    for found_id in found_ids:
+        document_id = found_id.replace('PMID:', '')
+        if document_id not in document_dict:
+            print('not sure what to do with this ID:' + document_id)
+            continue
+        filename = document_dict[document_id]
+        if filename not in found_dict:
+            found_dict[filename] = []
+        found_dict[filename].append(document_id)
+    return found_dict
 
 
 def lambda_handler(event, context):
@@ -72,4 +102,7 @@ def lambda_handler(event, context):
     )
     db = client['test']
     collection = db['documentMetadata']
-    return check_file(source_info['bucket'], source_info['filepath'])
+    main_dict = get_document_dict(source_info['bucket'], source_info['filepath'])
+    if 'deleted' in source_info['filepath']:
+        return check_nonexistence(main_dict)
+    return check_existence(main_dict)
