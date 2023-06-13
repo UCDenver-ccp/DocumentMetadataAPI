@@ -12,6 +12,7 @@ from pymongo import MongoClient
 
 app = Flask(__name__)
 CORS(app)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 if os.environ and 'connection_string' in os.environ:
     client = MongoClient(os.environ['connection_string'])
@@ -91,15 +92,15 @@ def publication_lookup():
     return response_object
 
 
-@app.route('/synonyms')
-def synonym_lookup():
+@app.route('/identifiers')
+def id_lookup():
     args = request.args
     pub_ids = args['pubids'].split(',')
-    logging.debug(f"Total ids: {len(pub_ids)}")
+    logging.info(f"Total ids: {len(pub_ids)}")
     pmcids = [re.sub('PMC:', 'PMC', pub_id, flags=re.IGNORECASE) for pub_id in pub_ids if pub_id.upper().startswith('PMC')]
     dois = [re.sub('DOI:', '', pub_id, flags=re.IGNORECASE).strip() for pub_id in pub_ids if pub_id.upper().startswith('DOI')]
     pmids = [re.sub('PMID:', '', pub_id, flags=re.IGNORECASE) for pub_id in pub_ids if pub_id.upper().startswith('PMID')]
-    logging.debug(f"PMC: {len(pmcids)}\tDOI: {len(dois)}\tPMID: {len(pmids)}")
+    logging.info(f"PMC: {len(pmcids)}\tDOI: {len(dois)}\tPMID: {len(pmids)}")
     results_dict = {}
     if len(pmcids) > 0:
         pmc_dict = {}
@@ -113,12 +114,12 @@ def synonym_lookup():
                     'DOI': 'DOI:' + record['DOI']
                 }
         unfound_ids = set(pmcids) - found_ids
-        logging.debug(f"{len(found_ids)} PMC IDs found in DB")
+        logging.info(f"{len(found_ids)} PMC IDs found in DB")
         if len(unfound_ids) > 0:
             logging.debug(f"Checking PMC API for {len(unfound_ids)} PMC IDs")
-            additional_synonyms = lookup_synonyms('pmcid', list(unfound_ids))
-            logging.debug(f"Found an additional {len(additional_synonyms.keys())} IDs")
-            pmc_dict.update(additional_synonyms)
+            additional_identifiers = lookup_identifiers('pmcid', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} PMC IDs")
+            pmc_dict.update(additional_identifiers)
         results_dict['PMC'] = pmc_dict
     if len(dois) > 0:
         doi_dict = {}
@@ -132,12 +133,12 @@ def synonym_lookup():
                     'PMC': record['PMC'].replace('PMC', 'PMC:')
                 }
         unfound_ids = set(dois) - found_ids
-        logging.debug(f"{len(found_ids)} DOIs found in DB")
+        logging.info(f"{len(found_ids)} DOIs found in DB")
         if len(unfound_ids) > 0:
             logging.debug(f"Checking PMC API for {len(unfound_ids)} DOI IDs")
-            additional_synonyms = lookup_synonyms('doi', list(unfound_ids))
-            logging.debug(f"Found an additional {len(additional_synonyms.keys())} IDs")
-            doi_dict.update(additional_synonyms)
+            additional_identifiers = lookup_identifiers('doi', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} DOIs")
+            doi_dict.update(additional_identifiers)
         results_dict['DOI'] = doi_dict
     if len(pmids) > 0:
         pmid_dict = {}
@@ -151,17 +152,17 @@ def synonym_lookup():
                     'DOI': 'DOI:' + record['DOI']
                 }
         unfound_ids = set(pmids) - found_ids
-        logging.debug(f"{len(found_ids)} PMIDs found in DB")
+        logging.info(f"{len(found_ids)} PMIDs found in DB")
         if len(unfound_ids) > 0:
             logging.debug(f"Checking PMC API for {len(unfound_ids)} PMIDs")
-            additional_synonyms = lookup_synonyms('pmid', list(unfound_ids))
-            logging.debug(f"Found an additional {len(additional_synonyms.keys())} IDs")
-            pmid_dict.update(additional_synonyms)
+            additional_identifiers = lookup_identifiers('pmid', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} PMIDs")
+            pmid_dict.update(additional_identifiers)
         results_dict['PMID'] = pmid_dict
     return results_dict
 
 
-def lookup_synonyms(id_type: str, ids: list[str], sublist_size: int = 200) -> dict:
+def lookup_identifiers(id_type: str, ids: list[str], sublist_size: int = 200) -> dict:
     synonyms_dict = {}
     start_index = sublist_size
     end_index = len(ids)
@@ -233,6 +234,5 @@ def lookup_synonyms(id_type: str, ids: list[str], sublist_size: int = 200) -> di
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
     app.debug = True
     app.run()
