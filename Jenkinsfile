@@ -65,7 +65,7 @@ pipeline {
             steps {
                 configFileProvider([
                     configFile(fileId: 'values-ci.yaml', targetLocation: 'values-ncats.yaml'),
-                    configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
+                    configFile(fileId: 'prepare-docmetadataapi.sh', targetLocation: 'prepare.sh')
                 ]){
                     script {
                         sh '''
