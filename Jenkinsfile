@@ -15,7 +15,7 @@ pipeline {
         pollSCM('H/5 * * * *')
     }
     environment {
-        IMAGE_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-docmetatdaapi"
+        IMAGE_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-docmetadataapi"
         KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-ci-blue-cluster"
         DEPLOY_ENV = "ci"
     }
