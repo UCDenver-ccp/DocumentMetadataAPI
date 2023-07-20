@@ -5,7 +5,7 @@ pipeline {
         disableConcurrentBuilds()
     }
     agent {
-        node { label 'translator && aws && build' }
+        node { label 'translator && aws && build && docmetadataapi' }
     }
     parameters {
         string(name: 'BUILD_VERSION', defaultValue: '', description: 'The build version to deploy (optional)')
