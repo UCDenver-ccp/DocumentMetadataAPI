@@ -88,6 +88,7 @@ def publication_lookup():
         'request_id': args['request_id'],
         'processing_time_ms': int((time.perf_counter() - t) * 1000.0),
         }
+    print(meta_object)
     response_object = {'_meta': meta_object, 'results': results}
     return response_object
 
