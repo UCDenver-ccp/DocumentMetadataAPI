@@ -1,5 +1,9 @@
+import http.client
 import os
+import re
 import time
+import json
+import logging
 from functools import lru_cache
 
 from flask import Flask, request
@@ -8,6 +12,7 @@ from pymongo import MongoClient
 
 app = Flask(__name__)
 CORS(app)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 if os.environ and 'connection_string' in os.environ:
     client = MongoClient(os.environ['connection_string'])
@@ -17,11 +22,15 @@ else:
     client = MongoClient()
     db = client['local']
 collection = db['documentMetadata']
+reference = db['documentIds']
 
 
 @app.route('/')
 def health_check():
-    return "OK", 200
+    ids = get_pm_ids(10)
+    ids.extend(get_pmc_ids(10))
+    ids.extend(get_other_ids(10))
+    return {'ids': ids}
 
 
 @app.route('/ids')
@@ -52,7 +61,12 @@ def publication_lookup():
     t = time.perf_counter()
     args = request.args
     pub_ids = args['pubids'].split(',')
-    documents = [x for x in collection.find({'document_id': {'$in': pub_ids}})]
+    corrected_pub_ids = []
+    for pub_id in pub_ids:
+        corrected_id = re.sub('PMC:', 'PMC', pub_id, flags=re.IGNORECASE)
+        corrected_id = re.sub('DOI:', '', corrected_id, flags=re.IGNORECASE).strip()
+        corrected_pub_ids.append(corrected_id)
+    documents = [x for x in collection.find({'document_id': {'$in': corrected_pub_ids}})]
     results = {}
     for document in documents:
         results[document["document_id"]] = {
@@ -74,8 +88,150 @@ def publication_lookup():
         'request_id': args['request_id'],
         'processing_time_ms': int((time.perf_counter() - t) * 1000.0),
         }
+    print(meta_object)
     response_object = {'_meta': meta_object, 'results': results}
     return response_object
+
+
+@app.route('/identifiers')
+def id_lookup():
+    args = request.args
+    pub_ids = args['pubids'].split(',')
+    logging.info(f"Total ids: {len(pub_ids)}")
+    pmcids = [re.sub('PMC:', 'PMC', pub_id, flags=re.IGNORECASE) for pub_id in pub_ids if pub_id.upper().startswith('PMC')]
+    dois = [re.sub('DOI:', '', pub_id, flags=re.IGNORECASE).strip() for pub_id in pub_ids if pub_id.upper().startswith('DOI')]
+    pmids = [re.sub('PMID:', '', pub_id, flags=re.IGNORECASE) for pub_id in pub_ids if pub_id.upper().startswith('PMID')]
+    logging.info(f"PMC: {len(pmcids)}\tDOI: {len(dois)}\tPMID: {len(pmids)}")
+    results_dict = {}
+    if len(pmcids) > 0:
+        pmc_dict = {}
+        found_ids = set([])
+        records = [rec for rec in reference.find({'PMC': {'$in': pmcids}})]
+        if len(records) > 0:
+            for record in records:
+                found_ids.add(record['PMC'])
+                pmc_dict[record['PMC'].replace('PMC', 'PMC:')] = {
+                    'PMID': 'PMID:' + record['PM'],
+                    'DOI': 'DOI:' + record['DOI']
+                }
+        unfound_ids = set(pmcids) - found_ids
+        logging.info(f"{len(found_ids)} PMC IDs found in DB")
+        if len(unfound_ids) > 0:
+            logging.debug(f"Checking PMC API for {len(unfound_ids)} PMC IDs")
+            additional_identifiers = lookup_identifiers('pmcid', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} PMC IDs")
+            pmc_dict.update(additional_identifiers)
+        results_dict['PMC'] = pmc_dict
+    if len(dois) > 0:
+        doi_dict = {}
+        found_ids = set([])
+        records = [rec for rec in reference.find({'DOI': {'$in': dois}})]
+        if len(records) > 0:
+            for record in records:
+                found_ids.add(record['DOI'])
+                doi_dict['DOI:' + record['DOI']] = {
+                    'PMID': 'PMID:' + record['PM'],
+                    'PMC': record['PMC'].replace('PMC', 'PMC:')
+                }
+        unfound_ids = set(dois) - found_ids
+        logging.info(f"{len(found_ids)} DOIs found in DB")
+        if len(unfound_ids) > 0:
+            logging.debug(f"Checking PMC API for {len(unfound_ids)} DOI IDs")
+            additional_identifiers = lookup_identifiers('doi', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} DOIs")
+            doi_dict.update(additional_identifiers)
+        results_dict['DOI'] = doi_dict
+    if len(pmids) > 0:
+        pmid_dict = {}
+        found_ids = set([])
+        records = [rec for rec in reference.find({'PM': {'$in': pmids}})]
+        if len(records) > 0:
+            for record in records:
+                found_ids.add(record['PM'])
+                pmid_dict['PMID:' + record['PM']] = {
+                    'PMC': record['PMC'].replace('PMC', 'PMC:'),
+                    'DOI': 'DOI:' + record['DOI']
+                }
+        unfound_ids = set(pmids) - found_ids
+        logging.info(f"{len(found_ids)} PMIDs found in DB")
+        if len(unfound_ids) > 0:
+            logging.debug(f"Checking PMC API for {len(unfound_ids)} PMIDs")
+            additional_identifiers = lookup_identifiers('pmid', list(unfound_ids))
+            logging.info(f"Found an additional {len(additional_identifiers.keys())} PMIDs")
+            pmid_dict.update(additional_identifiers)
+        results_dict['PMID'] = pmid_dict
+    return results_dict
+
+
+def lookup_identifiers(id_type: str, ids: list[str], sublist_size: int = 200) -> dict:
+    synonyms_dict = {}
+    start_index = sublist_size
+    end_index = len(ids)
+    extra = end_index % sublist_size
+    for cap in range(start_index, end_index, sublist_size):
+        connection = http.client.HTTPSConnection('www.ncbi.nlm.nih.gov')
+        id_sublist = ids[cap - sublist_size: cap]
+        request_string = f'/pmc/utils/idconv/v1.0/?ids={",".join(id_sublist)}&idtype={id_type}'
+        request_string += '&format=json&versions=no&tool=documentmetadataapi&email=edgargaticacu@gmail.com'
+        logging.debug('sending request to %s', request_string)
+        connection.request('GET', request_string)
+        response = connection.getresponse()
+        if response.status == 200:
+            response_text = response.read()
+            response_data = json.loads(response_text)
+            if 'records' in response_data:
+                for record in response_data['records']:
+                    if id_type.lower() == 'pmid':
+                        key = 'PMID:' + record['pmid']
+                        value = {
+                            'PMC': record['pmcid'].replace('PMC', 'PMC:') if 'pmcid' in record else '',
+                            'DOI': 'DOI:' + record['doi'] if 'doi' in record else ''
+                        }
+                    elif id_type.lower() == 'pmcid':
+                        key = record['pmcid'].replace('PMC', 'PMC:')
+                        value = {
+                            'PMID': 'PMID:' + record['pmid'] if 'pmid' in record else '',
+                            'DOI': 'DOI:' + record['doi'] if 'doi' in record else ''
+                        }
+                    else:
+                        key = 'DOI:' + record['doi']
+                        value = {
+                            'PMC': record['pmcid'].replace('PMC', 'PMC:') if 'pmcid' in record else '',
+                            'PMID': 'PMID:' + record['pmid'] if 'pmid' in record else '',
+                        }
+                    synonyms_dict[key] = value
+    id_sublist = ids[-extra:]
+    connection = http.client.HTTPSConnection('www.ncbi.nlm.nih.gov')
+    request_string = f'/pmc/utils/idconv/v1.0/?ids={",".join(id_sublist)}&idtype={id_type}'
+    request_string += '&format=json&versions=no&tool=documentmetadataapi&email=edgargaticacu@gmail.com'
+    logging.debug('sending request to %s', request_string)
+    connection.request('GET', request_string)
+    response = connection.getresponse()
+    if response.status == 200:
+        response_text = response.read()
+        response_data = json.loads(response_text)
+        if 'records' in response_data:
+            for record in response_data['records']:
+                if id_type.lower() == 'pmid':
+                    key = 'PMID:' + record['pmid']
+                    value = {
+                        'PMC': record['pmcid'].replace('PMC', 'PMC:') if 'pmcid' in record else '',
+                        'DOI': 'DOI:' + record['doi'] if 'doi' in record else ''
+                    }
+                elif id_type.lower() == 'pmcid':
+                    key = record['pmcid'].replace('PMC', 'PMC:')
+                    value = {
+                        'PMID': 'PMID:' + record['pmid'] if 'pmid' in record else '',
+                        'DOI': 'DOI:' + record['doi'] if 'doi' in record else ''
+                    }
+                else:
+                    key = 'DOI:' + record['doi']
+                    value = {
+                        'PMC': record['pmcid'].replace('PMC', 'PMC:') if 'pmcid' in record else '',
+                        'PMID': 'PMID:' + record['pmid'] if 'pmid' in record else '',
+                    }
+                synonyms_dict[key] = value
+    return synonyms_dict
 
 
 if __name__ == '__main__':

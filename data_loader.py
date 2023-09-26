@@ -1,3 +1,5 @@
+import http.client
+
 import boto3
 import gzip
 import json
@@ -9,7 +11,49 @@ def get_synonyms(document_ids):
     syn_dict = {}
     for doc in reference.find({'PM': {'$in': document_ids}}):
         syn_dict[doc['PM']] = [doc['PMC'] if 'PMC' in doc else '', doc['DOI'] if 'DOI' in doc else '']
-    return syn_dict
+    id_set = set(document_ids)
+    lookup_dict = lookup_synonyms(list(id_set - syn_dict.keys()))
+    return syn_dict | lookup_dict
+
+
+def lookup_synonyms(ids: list[str], sublist_size: int = 200) -> dict:
+    synonyms_dict = {}
+    start_index = sublist_size
+    end_index = len(ids)
+    extra = end_index % sublist_size
+    for cap in range(start_index, end_index, sublist_size):
+        connection = http.client.HTTPConnection('www.ncbi.nlm.nih.gov')
+        id_sublist = ids[cap - sublist_size: cap]
+        numerical_ids = [x.replace('PMID:', '') for x in id_sublist]
+        request_string = f'/pmc/utils/idconv/v1.0/?ids={",".join(numerical_ids)}'
+        request_string += '&format=json&versions=no&tool=documentmetadataapi&email=edgargaticacu@gmail.com'
+        connection.request('GET', request_string)
+        response = connection.getresponse()
+        if response.status == 200:
+            response_text = response.read()
+            response_data = json.loads(response_text)
+            if 'records' in response_data:
+                for record in response_data['records']:
+                    synonyms_dict[record['pmid']] = [record['pmcid'] if 'pmcid' in record else '',
+                                                     record['doi'] if 'doi' in record else '']
+    id_sublist = ids[-extra:]
+    numerical_ids = [x.replace('PMID:', '') for x in id_sublist]
+    connection = http.client.HTTPConnection('www.ncbi.nlm.nih.gov')
+    request_string = f'/pmc/utils/idconv/v1.0/?ids={",".join(numerical_ids)}'
+    request_string += '&format=json&versions=no&tool=documentmetadataapi&email=edgargaticacu@gmail.com'
+    connection.request('GET', request_string)
+    response = connection.getresponse()
+    if response.status == 200:
+        response_text = response.read()
+        response_data = json.loads(response_text)
+        if 'records' in response_data:
+            for record in response_data['records']:
+                synonyms_dict[record['pmid']] = [record['pmcid'] if 'pmcid' in record else '',
+                                                 record['doi'] if 'doi' in record else '']
+    return synonyms_dict
+
+
+
 
 
 def get_existing_documents(document_ids):
