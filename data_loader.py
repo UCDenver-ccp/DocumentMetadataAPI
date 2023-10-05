@@ -127,7 +127,7 @@ def process_file(remote_bucket, remote_filename):
     synonyms = get_synonyms(id_list)
     insert_metrics = insert_new_documents([doc for doc in pubmed_documents if doc['document_id'] in ids_to_create], synonyms)
     update_metrics = update_existing_documents([doc for doc in pubmed_documents if doc['document_id'] in ids_to_update], synonyms)
-    return {'insert': insert_metrics, 'update': update_metrics}
+    return {'insert': insert_metrics, 'update': update_metrics, 'new': ids_to_create[:5]}
 
 
 def lambda_handler(event, context):
