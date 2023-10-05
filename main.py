@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from functools import lru_cache
 
@@ -52,7 +53,12 @@ def publication_lookup():
     t = time.perf_counter()
     args = request.args
     pub_ids = args['pubids'].split(',')
-    documents = [x for x in collection.find({'document_id': {'$in': pub_ids}})]
+    corrected_pub_ids = []
+    for pub_id in pub_ids:
+        corrected_id = re.sub('PMC:', 'PMC', pub_id, flags=re.IGNORECASE)
+        corrected_id = re.sub('DOI:', '', corrected_id, flags=re.IGNORECASE).strip()
+        corrected_pub_ids.append(corrected_id)
+    documents = [x for x in collection.find({'document_id': {'$in': corrected_pub_ids}})]
     results = {}
     for document in documents:
         results[document["document_id"]] = {
@@ -66,7 +72,7 @@ def publication_lookup():
             'pub_day': document['pub_day'] if 'pub_day' in document else '',
             'abstract': document['abstract'] if 'abstract' in document else ''
         }
-    not_found = set(pub_ids) - set(results.keys())
+    not_found = set(corrected_pub_ids) - set(results.keys())
     results['not_found'] = list(not_found)
     meta_object = {
         'timestamp': time.strftime('%Y-%m-%dT%H:%M%SZ', time.gmtime()),
