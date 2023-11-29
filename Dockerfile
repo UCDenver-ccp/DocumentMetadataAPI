@@ -6,6 +6,6 @@ ENV APP_HOME .
 WORKDIR $APP_HOME
 COPY . ./
 
-RUN pip install Flask flask-cors pymongo gunicorn
+RUN pip install -r requirements.txt
 
 CMD exec gunicorn -b 0.0.0.0:8000 --workers 1 --threads 8 --timeout 0 main:app
