@@ -9,10 +9,29 @@ from functools import lru_cache
 from flask import Flask, request
 from flask_cors import CORS
 from pymongo import MongoClient
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME as telemetery_service_name_key, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+trace.set_tracer_provider(
+    TracerProvider(resource=Resource.create({telemetery_service_name_key: "DocumentMetadataAPI"}))
+)
+
+jaeger_exporter = OTLPSpanExporter(endpoint="http://jaeger-otel-agent.sri:6831/v1/traces")
+trace.get_tracer_provider().add_span_processor(
+    BatchSpanProcessor(jaeger_exporter)
+)
+FlaskInstrumentor().instrument_app(app, tracer_provider=trace)
+# FlaskInstrumentor().instrument(enable_commenter=True, commenter_options={}, tracer_provider=trace)
+PymongoInstrumentor().instrument()
+
 
 if os.environ and 'connection_string' in os.environ:
     client = MongoClient(os.environ['connection_string'])
@@ -33,12 +52,9 @@ def health_check():
     return {'ids': ids}
 
 
-@app.route('/ids')
-def func():
-    ids = get_pm_ids(6000)
-    ids.extend(get_pmc_ids(5000))
-    ids.extend(get_other_ids(5000))
-    return {'ids': ids}
+@app.route('/version')
+def get_version():
+    return "0.1.0", 200
 
 
 @lru_cache()

@@ -22,3 +22,7 @@ six==1.16.0
 urllib3==1.26.12
 Werkzeug==2.2.2
 zipp==3.9.0
+opentelemetry-instrumentation-flask
+opentelemetry-instrumentation-pymongo
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
