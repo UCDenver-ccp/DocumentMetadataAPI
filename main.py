@@ -24,8 +24,8 @@ trace.set_tracer_provider(
     TracerProvider(resource=Resource.create({telemetery_service_name_key: "DocumentMetadataAPI"}))
 )
 
-jaeger_exporter = OTLPSpanExporter(endpoint="http://jaeger-otel-agent.sri:4318/v1/traces")
-# jaeger_exporter = OTLPSpanExporter(endpoint="http://collector.text-mining-kp.org:4318/v1/traces")
+# jaeger_exporter = OTLPSpanExporter(endpoint="http://jaeger-otel-agent.sri:4318/v1/traces")
+jaeger_exporter = OTLPSpanExporter(endpoint="http://collector.text-mining-kp.org:4318/v1/traces")
 # jaeger_exporter = OTLPSpanExporter(endpoint="http://127.0.0.1:4318/v1/traces")
 trace.get_tracer_provider().add_span_processor(
     BatchSpanProcessor(jaeger_exporter)
