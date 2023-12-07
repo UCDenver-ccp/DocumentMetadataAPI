@@ -25,14 +25,14 @@ trace.set_tracer_provider(
 )
 
 # jaeger_exporter = OTLPSpanExporter(endpoint="http://jaeger-otel-agent.sri:4318/v1/traces")
-# jaeger_exporter = OTLPSpanExporter(endpoint="http://34.168.158.201:4318/v1/traces")
+jaeger_exporter = OTLPSpanExporter(endpoint="http://collector.text-mining-kp.org:4318/v1/traces")
 # jaeger_exporter = OTLPSpanExporter(endpoint="http://127.0.0.1:4318/v1/traces")
-# trace.get_tracer_provider().add_span_processor(
-#     BatchSpanProcessor(jaeger_exporter)
-# )
-# FlaskInstrumentor().instrument_app(app, tracer_provider=trace)
+trace.get_tracer_provider().add_span_processor(
+    BatchSpanProcessor(jaeger_exporter)
+)
+FlaskInstrumentor().instrument_app(app, tracer_provider=trace)
 # FlaskInstrumentor().instrument(enable_commenter=True, commenter_options={}, tracer_provider=trace)
-# PymongoInstrumentor().instrument()
+PymongoInstrumentor().instrument()
 
 
 if os.environ and 'connection_string' in os.environ:
