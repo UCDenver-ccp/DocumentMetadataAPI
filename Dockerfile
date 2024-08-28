@@ -5,6 +5,7 @@ ENV PYTHONUNBUFFERED True
 ENV APP_HOME .
 WORKDIR $APP_HOME
 COPY . ./
+COPY /home/deploy/ssl/certs/global-bundle.pem /home/deploy/ssl/certs/global-bundle.pem
 
 RUN pip install Flask flask-cors pymongo gunicorn
 
