@@ -1,3 +1,4 @@
+
 pipeline {
     options {
         timestamps()
@@ -20,14 +21,6 @@ pipeline {
         DEPLOY_ENV = "ci"
     }
     stages {
-        stage('Prepare Environment') {
-            steps {
-                script {
-                    // Download the CA bundle
-                    sh 'wget -O /home/deploy/ssl/certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem'
-                }
-            }
-        }
         stage('Checkout source code') {
             steps {
                 cleanWs()
